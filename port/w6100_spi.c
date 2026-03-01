@@ -91,10 +91,15 @@ void w6100_spi_write_burst(uint8_t* buf, uint16_t len)
 
 void w6100_cris_enter(void)
 {
-    critical_section_enter_blocking(&g_spi_crit_sec);
+    // Intentionally empty. The tension control timer callback does not access
+    // the W6100 SPI bus, so there is no concurrent SPI access to protect.
+    // Using a real critical section here disables interrupts during every SPI
+    // transaction; the disconnect() spin-loop in the ioLibrary then runs so
+    // fast that the 100Hz motor control timer never gets a chance to fire,
+    // causing the motors to pause.
 }
 
 void w6100_cris_exit(void)
 {
-    critical_section_exit(&g_spi_crit_sec);
+    // Intentionally empty — see w6100_cris_enter.
 }

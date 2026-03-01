@@ -27,8 +27,9 @@
 #define PIO_CLOCK_HZ    125000000
 
 // Minimum step pulse high time in PIO cycles (matches PULSE_HIGH_CYCLES in .pio)
-// 10 cycles at 125MHz = 80ns; TMC2209 requires min 100ns, use 10 cycles (80ns) + overhead
-#define PULSE_HIGH_CYCLES   10
+// TMC2209 requires minimum 100ns. RP2350 runs at 150MHz.
+// 30 cycles at 150MHz = 200ns; 30 cycles at 125MHz = 240ns.
+#define PULSE_HIGH_CYCLES   28  // set y, 28 → 28+2 = 30 total cycles in high phase
 
 // Manual speed: fixed step rate when buttons pressed (steps/sec)
 // 5760 steps/sec = 2 RPM at the spool (172800 steps/rev)

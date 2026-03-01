@@ -45,11 +45,11 @@ void stepper_init(void)
     // Initialize direction pins as GPIO outputs, default forward direction
     gpio_init(FEED_DIR_PIN);
     gpio_set_dir(FEED_DIR_PIN, GPIO_OUT);
-    gpio_put(FEED_DIR_PIN, 1);
+    gpio_put(FEED_DIR_PIN, 0);
 
     gpio_init(RECOVERY_DIR_PIN);
     gpio_set_dir(RECOVERY_DIR_PIN, GPIO_OUT);
-    gpio_put(RECOVERY_DIR_PIN, 1);
+    gpio_put(RECOVERY_DIR_PIN, 0);
 
     // Initialize manual control pins with pull-ups (active low buttons)
     gpio_init(MANUAL_FEED_PIN);

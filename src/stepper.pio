@@ -21,8 +21,9 @@
 .side_set 1
 
 ; PULSE_HIGH_CYCLES must match the #define in stepper.h.
-; 8 + 2 instruction overhead = 10 cycles = 80ns at 125MHz.
-.define PUBLIC PULSE_HIGH_CYCLES 8
+; TMC2209 requires minimum 100ns STEP high time. RP2350 runs at 150MHz.
+; 28 + 2 instruction overhead = 30 cycles = 200ns at 150MHz.
+.define PUBLIC PULSE_HIGH_CYCLES 28
 
 .wrap_target
 check:
