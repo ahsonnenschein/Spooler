@@ -9,36 +9,30 @@
 #include "wizchip_conf.h"
 #include "w6100.h"
 #include "socket.h"
-#include "dhcp.h"
 
 #include "tension_ctrl.h"
 #include "modbus_server.h"
 
-// Network configuration
-#define DHCP_SOCKET         7       // Socket 7 reserved for DHCP
-#define DHCP_BUFFER_SIZE    1024
-#define DHCP_TIMER_INTERVAL_US  1000000  // 1 second
+// ============================================================
+// Static network configuration
+// Change these to match your machine network.
+// PC ethernet card should be set to 192.168.100.1/24.
+// ============================================================
+#define STATIC_IP       {192, 168, 100, 2}
+#define STATIC_SUBNET   {255, 255, 255, 0}
+#define STATIC_GATEWAY  {192, 168, 100, 1}
 
 // Tension control loop interval: 100Hz = 10,000 us
 #define TENSION_CTRL_INTERVAL_US  (-10000)  // Negative = best-effort scheduling
 
-// Buffers and state
-static uint8_t g_dhcp_buffer[DHCP_BUFFER_SIZE];
-
 static uint8_t g_mac_addr[6];
-static uint8_t g_ip_addr[4]  = {0, 0, 0, 0};
-static uint8_t g_subnet[4]   = {255, 255, 255, 0};
-static uint8_t g_gateway[4]  = {0, 0, 0, 0};
+static uint8_t g_ip_addr[4]  = STATIC_IP;
+static uint8_t g_subnet[4]   = STATIC_SUBNET;
+static uint8_t g_gateway[4]  = STATIC_GATEWAY;
 
-static volatile bool g_dhcp_got_ip = false;
-static struct repeating_timer g_dhcp_timer;
 static struct repeating_timer g_tension_timer;
 
 // Forward declarations
-static void dhcp_ip_assign(void);
-static void dhcp_ip_update(void);
-static void dhcp_ip_conflict(void);
-static bool dhcp_timer_callback(struct repeating_timer* t);
 static bool network_init(void);
 static void generate_mac_address(uint8_t* mac);
 static void print_network_info(void);
@@ -78,16 +72,14 @@ int main(void)
     // Initialize Modbus server buffers
     modbus_server_init();
 
-    printf("Waiting for DHCP...\n");
+    printf("\n========================================\n");
+    print_network_info();
+    printf("Modbus TCP Server ready on port %d\n", MODBUS_TCP_PORT);
+    printf("========================================\n");
 
     // Main loop
     while (1) {
-        uint8_t dhcp_status = DHCP_run();
-
-        if (dhcp_status == DHCP_IP_LEASED || g_dhcp_got_ip) {
-            modbus_server_run();
-        }
-
+        modbus_server_run();
         sleep_us(100);
     }
 
@@ -112,16 +104,31 @@ static bool network_init(void)
         return false;
     }
 
+    // Wait for PHY link to come up before configuring the network stack.
+    // Autonegotiation can take a few seconds; without link the W6100
+    // silently discards all frames including ARP.
+    printf("Waiting for PHY link");
+    for (int i = 0; i < 100; i++) {
+        ctlwizchip(CW_GET_PHYLINK, &tmp);
+        if (tmp == PHY_LINK_ON) {
+            printf(" OK\n");
+            break;
+        }
+        printf(".");
+        sleep_ms(100);
+        if (i == 99) {
+            printf(" TIMEOUT (no cable?)\n");
+        }
+    }
+
+    // Apply static network configuration
     NETUNLOCK();
     setSHAR(g_mac_addr);
-    NETLOCK();
-
+    setSIPR(g_ip_addr);
+    setSUBR(g_subnet);
+    setGAR(g_gateway);
     setNET4MR(0x00);
-
-    reg_dhcp_cbfunc(dhcp_ip_assign, dhcp_ip_update, dhcp_ip_conflict);
-    DHCP_init(DHCP_SOCKET, g_dhcp_buffer);
-
-    add_repeating_timer_us(DHCP_TIMER_INTERVAL_US, dhcp_timer_callback, NULL, &g_dhcp_timer);
+    NETLOCK();
 
     return true;
 }
@@ -139,56 +146,6 @@ static void generate_mac_address(uint8_t* mac)
     mac[5] = board_id.id[7];
 }
 
-static void dhcp_ip_assign(void)
-{
-    getIPfromDHCP(g_ip_addr);
-    getGWfromDHCP(g_gateway);
-    getSNfromDHCP(g_subnet);
-
-    NETUNLOCK();
-    setSIPR(g_ip_addr);
-    setGAR(g_gateway);
-    setSUBR(g_subnet);
-    NETLOCK();
-
-    g_dhcp_got_ip = true;
-
-    printf("\n========================================\n");
-    printf("DHCP IP Assigned!\n");
-    print_network_info();
-    printf("Modbus TCP Server ready on port %d\n", MODBUS_TCP_PORT);
-    printf("========================================\n");
-}
-
-static void dhcp_ip_update(void)
-{
-    getIPfromDHCP(g_ip_addr);
-    getGWfromDHCP(g_gateway);
-    getSNfromDHCP(g_subnet);
-
-    NETUNLOCK();
-    setSIPR(g_ip_addr);
-    setGAR(g_gateway);
-    setSUBR(g_subnet);
-    NETLOCK();
-
-    printf("\nDHCP IP Updated!\n");
-    print_network_info();
-}
-
-static void dhcp_ip_conflict(void)
-{
-    printf("ERROR: DHCP IP conflict detected!\n");
-    g_dhcp_got_ip = false;
-}
-
-static bool dhcp_timer_callback(struct repeating_timer* t)
-{
-    (void)t;
-    DHCP_time_handler();
-    return true;
-}
-
 static void print_network_info(void)
 {
     printf("IP Address: %d.%d.%d.%d\n",
@@ -197,4 +154,13 @@ static void print_network_info(void)
            g_subnet[0], g_subnet[1], g_subnet[2], g_subnet[3]);
     printf("Gateway:    %d.%d.%d.%d\n",
            g_gateway[0], g_gateway[1], g_gateway[2], g_gateway[3]);
+
+    // Read back from W6100 registers to confirm the chip accepted the config
+    uint8_t rb_ip[4], rb_mac[6];
+    getSIPR(rb_ip);
+    getSHAR(rb_mac);
+    printf("W6100 IP (readback):  %d.%d.%d.%d\n",
+           rb_ip[0], rb_ip[1], rb_ip[2], rb_ip[3]);
+    printf("W6100 MAC (readback): %02X:%02X:%02X:%02X:%02X:%02X\n",
+           rb_mac[0], rb_mac[1], rb_mac[2], rb_mac[3], rb_mac[4], rb_mac[5]);
 }
