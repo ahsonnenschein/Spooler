@@ -31,7 +31,8 @@
 #define PULSE_HIGH_CYCLES   10
 
 // Manual speed: fixed step rate when buttons pressed (steps/sec)
-#define MANUAL_STEP_RATE    1000.0f
+// 5760 steps/sec = 2 RPM at the spool (172800 steps/rev)
+#define MANUAL_STEP_RATE    5760.0f
 
 // Initialize both stepper PIO state machines and direction GPIO pins.
 void stepper_init(void);

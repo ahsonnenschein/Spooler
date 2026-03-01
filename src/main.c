@@ -41,11 +41,12 @@ int main(void)
 {
     stdio_init_all();
 
-    // Wait for USB serial
-    while (!stdio_usb_connected()) {
+    // Wait briefly for USB serial — proceed after 2s even if not connected.
+    // In standalone operation (no PC serial monitor) the system must still start.
+    for (int i = 0; i < 20 && !stdio_usb_connected(); i++) {
         sleep_ms(100);
     }
-    sleep_ms(500);
+    sleep_ms(200);
 
     printf("\n");
     printf("========================================\n");

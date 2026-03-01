@@ -1,45 +1,45 @@
 ; stepper.pio
 ; Variable-frequency stepper motor STEP pulse generator.
 ;
-; The CPU writes a 32-bit half-period value (in PIO clock cycles) to the TX FIFO.
-; The state machine generates a continuous STEP pulse stream:
-;   - STEP high for PULSE_HIGH_CYCLES cycles
-;   - STEP low for (half_period - PULSE_HIGH_CYCLES) cycles
-;   - Total period = 2 * half_period PIO clock cycles
+; The CPU writes a 32-bit half-period (in PIO clock cycles) to the TX FIFO
+; at 100Hz to update the motor speed. The state machine runs freely:
+;   - pull noblock: if FIFO has new data, use it; otherwise keep X (last value)
+;   - X == 0: motor stopped — poll FIFO rapidly until a non-zero value arrives
+;   - X != 0: generate continuous STEP pulses at the given half-period
 ;
-; Writing half_period = 0 stops the motor (STEP stays low).
+; This means one FIFO write sets the speed and the motor runs at that speed
+; until the next write — the CPU does NOT need to write every step.
 ;
-; The state machine checks for a new half_period value each full step cycle,
-; so speed changes take effect within one step.
+; Step timing (approximate, overhead << half-period at normal speeds):
+;   STEP high: ~10 PIO cycles (PULSE_HIGH_CYCLES + overhead)
+;   STEP low:  half_period + 2 cycles
+;   Total period: ~2 * half_period cycles
 ;
 ; Sideset pin: STEP output (1 = high, 0 = low)
-; No input pins used.
 
 .program stepper_pio
 .side_set 1
 
-; PULSE_HIGH_CYCLES must match the #define in stepper.c (10 cycles = ~80ns at 125MHz)
-; Subtract 2 from the actual desired cycles to account for instruction overhead.
+; PULSE_HIGH_CYCLES must match the #define in stepper.h.
+; 8 + 2 instruction overhead = 10 cycles = 80ns at 125MHz.
 .define PUBLIC PULSE_HIGH_CYCLES 8
 
 .wrap_target
-    pull block          side 0  ; Wait for half-period from TX FIFO. STEP=0.
-    mov x, osr         side 0  ; Load half-period into X.
-    jmp !x, stopped    side 0  ; If half-period == 0, go to stopped.
+check:
+    pull noblock        side 0  ; Get new half-period if available; else OSR = X (keep current).
+    mov x, osr         side 0  ; Update X (new or same as before).
+    jmp !x, check      side 0  ; X == 0: stopped — keep polling FIFO.
 
-    ; Generate STEP high phase (fixed duration)
-    set y, PULSE_HIGH_CYCLES side 1  ; STEP=1, load pulse width counter
+    ; ---- Generate STEP high phase (fixed duration) ----
+    set y, PULSE_HIGH_CYCLES side 1  ; STEP=1, load high-phase counter into Y.
 high_loop:
-    jmp y--, high_loop side 1  ; Count down with STEP=1
+    jmp y--, high_loop side 1   ; Count down with STEP=1 (10 cycles total).
 
-    ; Generate STEP low phase (remainder of half-period)
-    ; X already holds half_period; subtract PULSE_HIGH_CYCLES overhead
+    ; ---- Generate STEP low phase (half_period cycles, using Y to preserve X) ----
+    mov y, x           side 0  ; Y = X (copy so X is preserved for next iteration).
 low_loop:
-    jmp x--, low_loop  side 0  ; Count down remainder with STEP=0
-.wrap
-
-stopped:
-    jmp stopped        side 0  ; Park here with STEP=0 until next pull
+    jmp y--, low_loop  side 0  ; Count down with STEP=0.
+.wrap                          ; Back to check: try for new rate, else reuse X.
 
 % c-sdk {
 #include "hardware/clocks.h"
@@ -54,7 +54,7 @@ static inline void stepper_pio_program_init(PIO pio, uint sm, uint offset, uint 
     pio_gpio_init(pio, step_pin);
     pio_sm_set_consecutive_pindirs(pio, sm, step_pin, 1, true);
 
-    // No autopull - we use manual pull block
+    // No autopull — manual pull noblock used in the program
     sm_config_set_clkdiv(&c, 1.0f);  // Run at full system clock (125 MHz)
 
     pio_sm_init(pio, sm, offset, &c);

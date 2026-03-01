@@ -14,7 +14,7 @@ import threading
 # ============================================================
 # Configuration
 # ============================================================
-DEFAULT_IP   = '192.168.1.100'
+DEFAULT_IP   = '192.168.100.2'
 DEFAULT_PORT = 502
 POLL_MS      = 500   # Display refresh interval in milliseconds
 
@@ -262,9 +262,29 @@ class SpoolerMonitor:
         self.tds_lbl = ttk.Label(wf, text="—", width=18)
         self.tds_lbl.grid(row=0, column=1, sticky='w', **P)
 
+        # -- Manual inputs debug panel --
+        bf = ttk.LabelFrame(self.root, text="Manual Inputs (debug)")
+        bf.grid(row=6, column=0, sticky='ew', padx=8, pady=4)
+
+        LED_SIZE = 18
+
+        ttk.Label(bf, text="Feed button:").grid(row=0, column=0, sticky='w', **P)
+        self.feed_btn_canvas = tk.Canvas(bf, width=LED_SIZE, height=LED_SIZE,
+                                         highlightthickness=0)
+        self.feed_btn_canvas.grid(row=0, column=1, sticky='w', padx=4, pady=4)
+        self.feed_btn_led = self.feed_btn_canvas.create_oval(
+            2, 2, LED_SIZE - 2, LED_SIZE - 2, fill='gray', outline='black')
+
+        ttk.Label(bf, text="Recover button:").grid(row=0, column=2, sticky='w', **P)
+        self.recover_btn_canvas = tk.Canvas(bf, width=LED_SIZE, height=LED_SIZE,
+                                             highlightthickness=0)
+        self.recover_btn_canvas.grid(row=0, column=3, sticky='w', padx=4, pady=4)
+        self.recover_btn_led = self.recover_btn_canvas.create_oval(
+            2, 2, LED_SIZE - 2, LED_SIZE - 2, fill='gray', outline='black')
+
         # -- Footer --
         ttk.Label(self.root, text=f"Refreshing every {POLL_MS} ms  •  No external dependencies",
-                  foreground='gray').grid(row=6, column=0, pady=6)
+                  foreground='gray').grid(row=7, column=0, pady=6)
 
     # ---- Connection ----
 
@@ -297,6 +317,8 @@ class SpoolerMonitor:
                      'kp_lbl', 'ki_lbl', 'kd_lbl', 'tds_lbl'):
             getattr(self, attr).config(text="—", foreground='black')
         self.feed_btn.config(text="OFF  ▶  Turn ON")
+        self.feed_btn_canvas.itemconfig(self.feed_btn_led, fill='gray')
+        self.recover_btn_canvas.itemconfig(self.recover_btn_led, fill='gray')
 
     # ---- Polling ----
 
@@ -316,7 +338,7 @@ class SpoolerMonitor:
 
     def _refresh(self):
         hr    = self.client.read_holding_registers(0, 9)
-        ir    = self.client.read_input_registers(0, 3)
+        ir    = self.client.read_input_registers(0, 5)
         coils = self.client.read_coils(0, 1)
         di    = self.client.read_discrete_inputs(0, 2)
 
@@ -337,6 +359,12 @@ class SpoolerMonitor:
                 text=FAULT_CODES.get(code, f"Unknown ({code})"),
                 foreground='red' if code else 'black'
             )
+            feed_pressed    = bool(ir[3])
+            recover_pressed = bool(ir[4])
+            self.feed_btn_canvas.itemconfig(
+                self.feed_btn_led, fill='lime green' if feed_pressed else 'gray')
+            self.recover_btn_canvas.itemconfig(
+                self.recover_btn_led, fill='lime green' if recover_pressed else 'gray')
 
         if coils:
             on = bool(coils[0])

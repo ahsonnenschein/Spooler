@@ -25,7 +25,9 @@
 #define INREG_DANCER_POSITION   0   // cm x1000 (filtered)
 #define INREG_WATER_TDS         1   // raw ADC 0-4095
 #define INREG_FAULT_CODE        2   // 0=none, 1=wire break (min), 2=over-travel (max)
-#define NUM_INPUT_REGS          3
+#define INREG_FEED_BTN          3   // 1=manual feed button pressed
+#define INREG_RECOVER_BTN       4   // 1=manual recover button pressed
+#define NUM_INPUT_REGS          5
 
 // Coil indices (FC01 read, FC05 write)
 #define COIL_WIRE_FEED          0   // 0=off, 1=running

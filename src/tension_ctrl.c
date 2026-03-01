@@ -45,7 +45,7 @@ static uint16_t adc_read_channel(uint8_t channel)
 static uint16_t adc_to_dancer_cm_x1000(uint16_t adc_raw)
 {
     // KTR2-R-75: 75mm stroke, linear 0-3.3V, 12-bit ADC
-    return (uint16_t)(((uint32_t)adc_raw * DANCER_MAX_MM * 10) / ADC_MAX);
+    return (uint16_t)(((uint32_t)adc_raw * DANCER_MAX_MM * 100) / ADC_MAX);
 }
 
 // Apply PID gains from holding registers (stored as gain x1000)
@@ -118,6 +118,12 @@ bool tension_ctrl_timer_cb(struct repeating_timer* t)
     g_input_regs[INREG_WATER_TDS] = adc_read_channel(ADC_TDS_CHANNEL);
 
     // --------------------------------------------------------
+    // 2b. Read raw button states (visible over Modbus for debugging)
+    // --------------------------------------------------------
+    g_input_regs[INREG_FEED_BTN]    = stepper_manual_feed_pressed()    ? 1 : 0;
+    g_input_regs[INREG_RECOVER_BTN] = stepper_manual_recover_pressed() ? 1 : 0;
+
+    // --------------------------------------------------------
     // 3. Detect auto/manual mode from switch
     // --------------------------------------------------------
     bool auto_mode = stepper_in_auto_mode();
@@ -169,6 +175,19 @@ bool tension_ctrl_timer_cb(struct repeating_timer* t)
     // --------------------------------------------------------
     // 7. Motor control
     // --------------------------------------------------------
+    if (!auto_mode) {
+        // -- Manual mode -- fault does not block jogging; PID disabled
+        pid_reset(&g_pid);
+
+        float feed_rate     = stepper_manual_feed_pressed()    ? MANUAL_STEP_RATE : 0.0f;
+        float recovery_rate = stepper_manual_recover_pressed() ? MANUAL_STEP_RATE : 0.0f;
+
+        stepper_set_feed_rate(feed_rate);
+        stepper_set_recovery_rate(recovery_rate);
+        return true;
+    }
+
+    // Auto mode: fault stops all motors
     if (g_fault_latched) {
         stepper_stop_all();
         return true;
@@ -197,15 +216,6 @@ bool tension_ctrl_timer_cb(struct repeating_timer* t)
             stepper_stop_all();
             pid_reset(&g_pid);
         }
-    } else {
-        // -- Manual mode -- PID disabled, buttons drive motors
-        pid_reset(&g_pid);
-
-        float feed_rate     = stepper_manual_feed_pressed()    ? MANUAL_STEP_RATE : 0.0f;
-        float recovery_rate = stepper_manual_recover_pressed() ? MANUAL_STEP_RATE : 0.0f;
-
-        stepper_set_feed_rate(feed_rate);
-        stepper_set_recovery_rate(recovery_rate);
     }
 
     return true;

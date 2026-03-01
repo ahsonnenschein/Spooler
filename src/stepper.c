@@ -100,5 +100,5 @@ bool stepper_manual_recover_pressed(void)
 
 bool stepper_in_auto_mode(void)
 {
-    return gpio_get(AUTO_MANUAL_PIN);  // High = auto
+    return !gpio_get(AUTO_MANUAL_PIN);  // Switch pulls pin low in auto, high in manual
 }
