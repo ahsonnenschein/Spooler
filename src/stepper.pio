@@ -1,0 +1,63 @@
+; stepper.pio
+; Variable-frequency stepper motor STEP pulse generator.
+;
+; The CPU writes a 32-bit half-period value (in PIO clock cycles) to the TX FIFO.
+; The state machine generates a continuous STEP pulse stream:
+;   - STEP high for PULSE_HIGH_CYCLES cycles
+;   - STEP low for (half_period - PULSE_HIGH_CYCLES) cycles
+;   - Total period = 2 * half_period PIO clock cycles
+;
+; Writing half_period = 0 stops the motor (STEP stays low).
+;
+; The state machine checks for a new half_period value each full step cycle,
+; so speed changes take effect within one step.
+;
+; Sideset pin: STEP output (1 = high, 0 = low)
+; No input pins used.
+
+.program stepper_pio
+.side_set 1
+
+; PULSE_HIGH_CYCLES must match the #define in stepper.c (10 cycles = ~80ns at 125MHz)
+; Subtract 2 from the actual desired cycles to account for instruction overhead.
+.define PUBLIC PULSE_HIGH_CYCLES 8
+
+.wrap_target
+    pull block          side 0  ; Wait for half-period from TX FIFO. STEP=0.
+    mov x, osr         side 0  ; Load half-period into X.
+    jmp !x, stopped    side 0  ; If half-period == 0, go to stopped.
+
+    ; Generate STEP high phase (fixed duration)
+    set y, PULSE_HIGH_CYCLES side 1  ; STEP=1, load pulse width counter
+high_loop:
+    jmp y--, high_loop side 1  ; Count down with STEP=1
+
+    ; Generate STEP low phase (remainder of half-period)
+    ; X already holds half_period; subtract PULSE_HIGH_CYCLES overhead
+low_loop:
+    jmp x--, low_loop  side 0  ; Count down remainder with STEP=0
+.wrap
+
+stopped:
+    jmp stopped        side 0  ; Park here with STEP=0 until next pull
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void stepper_pio_program_init(PIO pio, uint sm, uint offset, uint step_pin) {
+    pio_sm_config c = stepper_pio_program_get_default_config(offset);
+
+    // Map the sideset pin to the STEP output
+    sm_config_set_sideset_pins(&c, step_pin);
+
+    // Configure STEP pin as output
+    pio_gpio_init(pio, step_pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, step_pin, 1, true);
+
+    // No autopull - we use manual pull block
+    sm_config_set_clkdiv(&c, 1.0f);  // Run at full system clock (125 MHz)
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

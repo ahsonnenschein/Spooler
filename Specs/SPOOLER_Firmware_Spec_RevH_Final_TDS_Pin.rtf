@@ -1,0 +1,306 @@
+{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 SPOOLER\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Wire Tension Controller Firmware Specification (C Implementation)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Revision: Rev H \u8211- Finalized TDS Pin Assignment and Analog Integration\line Date: 2026-02-28\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 1.\tx360\tab Introduction and System Background\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 SPOOLER is a dedicated embedded motion-control and tension-control firmware system for a wire EDM (Electrical Discharge Machining) machine.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 In a wire EDM system, a thin brass wire (250 \u181?m diameter) is continuously fed from a supply spool (\u8220"feed spool\u8221"), passes through the cutting zone, and is collected on a recovery spool (\u8220"take-up spool\u8221"). Stable and controlled wire tension is essential for maintaining straightness, preventing vibration/whip, avoiding breakage, and maintaining cut accuracy.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Tension is maintained mechanically using a spring-loaded shuttle assembly referred to as the \u8220"dancer\u8221". The dancer moves linearly along a rail in response to changes in wire tension. The position of this dancer is measured using a linear potentiometer (KTR2-R-75).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The firmware maintains the dancer at a fixed displacement using closed-loop control by adjusting the speed of the recovery spool motor relative to the feed spool motor.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If the wire breaks, tension collapses and the dancer rapidly moves to its minimum mechanical position. This is detected as a fault condition and the system must stop both motors.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The SPOOLER device communicates with a LinuxCNC host computer via MODBUS/TCP over Ethernet using the onboard W6100 Ethernet controller.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 2.\tx360\tab Mechanical System Description\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Wire: - Diameter: 0.25 mm brass EDM wire\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Spool diameters: - Full diameter: ~100 mm - Empty diameter: ~60 mm\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Spool widths: - Feed spool: ~90 mm - Recovery spool: ~50 mm (wire typically accumulates in ~20 mm region)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Drive system: - Stepper: 17HS19-1684S-PG27 - 1.8\u176? step (200 full steps/rev) - 27:1 gearbox - Belt stage: 20T motor pulley \u8594? 80T spool pulley - 4:1 reduction\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Total reduction: 27 \u215? 4 = 108:1\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Full-step resolution at spool: 200 \u215? 108 = 21,600 full steps/rev\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Microstepping multiplier: MISSING INFO Total steps per spool rev: STEPS_PER_SPOOL_REV = 21,600 \u215? MICROSTEP\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 3.\tx360\tab Hardware Platform\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 3.1 Microcontroller Board: W6100-EVB-Pico2 (RP2040 + W6100 Ethernet) GPIO16\u8211-GPIO21 are reserved internally for Ethernet and SHALL NOT be used.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 3.2 Stepper Drivers Model: Adafruit TMC2209 - STEP/DIR interface - 3.3V logic compatible - Current setting: MISSING INFO - STEP timing: MISSING INFO\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 3.3 Dancer Position Sensor Model: KTR2-R-75 linear potentiometer - High: 3V3 (pin 36) - Low: AGND (pin 33) - Wiper: GP27 (ADC1, pin 32) Calibration constants: MISSING INFO\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 3.4 Water Quality Sensor Model: Keyestudio KS0429 TDS Meter V1.0\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Electrical characteristics: - Supply: 3.3\u8211-5.5 V - Analog output: 0\u8211-2.3 V - Measurement range: 0\u8211-1000 ppm\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Final pin assignment: - TDS Analog Output: GP26 (ADC0), physical pin 31 - TDS VCC: 3V3 (pin 36) - TDS GND: AGND (pin 33 preferred)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Noise mitigation recommendation: - Optional 1 k\u937? series resistor - Optional 0.1 \u181?F capacitor to AGND at ADC pin\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 4.\tx360\tab GPIO Assignment\sa180\par}
+{
+\trowd \trgaph120
+\clbrdrb\brdrs\cellx2880\clbrdrb\brdrs\cellx5760\clbrdrb\brdrs\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Function\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Physical Pin\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GPIO\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Recovery DIR\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 19\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP14\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Recovery STEP\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 20\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP15\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Feed STEP\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 14\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP10\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Feed DIR\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 15\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP11\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Auto/Manual Switch\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 16\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP12\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Manual Feed Button\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 17\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP13\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Manual Recover Button\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 12\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP9\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Dancer Pot Wiper\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 32\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP27 (ADC1)\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 TDS Analog Output\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 31\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP26 (ADC0)\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Dancer Pot Low\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 33\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 AGND\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx2880\cellx5760\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Dancer Pot High\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 36\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 3V3\par}
+\cell}
+}
+\intbl\row}
+{\pard \ql \f0 \sa180 \li0 \fi0 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Reserved for Ethernet:\par}
+{
+\trowd \trgaph120
+\clbrdrb\brdrs\cellx4320\clbrdrb\brdrs\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 Physical Pin\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GPIO\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 21\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP16\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 22\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP17\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 24\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP18\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 25\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP19\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 26\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP20\par}
+\cell}
+}
+\intbl\row}
+{
+\trowd \trgaph120
+\cellx4320\cellx8640
+\trkeep\intbl
+{
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 27\par}
+\cell}
+{{\pard\intbl \ql \f0 \sa0 \li0 \fi0 GP21\par}
+\cell}
+}
+\intbl\row}
+{\pard \ql \f0 \sa180 \li0 \fi0 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 5.\tx360\tab Operating Modes\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Automatic Mode: - Control loop active - Feed runs when WIRE_FEED is TRUE and no fault exists - Recovery controlled by PID (optional feedforward compensation)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Manual Mode: - PID disabled - Motors controlled only by local buttons\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 6.\tx360\tab Control System\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Feed frequency:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 f_feed_steps_per_sec = (WIRE_FEED_RATE \u215? STEPS_PER_SPOOL_REV) / 60\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Dancer measurement: x_cm = a \u215? ADC + b x_f = (1 \u8722? \u945?)x_f + \u945?x\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 PID: e = DANCER_SETPOINT \u8722? x_f I = clamp(I + KI \u215? e \u215? dt, \u8722?Imax, +Imax) D = KD \u215? (e \u8722? e_prev)/dt u = KP \u215? e + I + D\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Recovery command: f_takeup = f_feed + u (or feedforward variant if enabled)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 7.\tx360\tab Fault Handling\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 WIRE_FAULT asserted if: - x_f < MINIMUM_DANCER_POSITION - OR x_f > MAXIMUM_DANCER_POSITION - OR ADC invalid\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 On fault: - Motors disabled within MISSING INFO ms - Fault latched until cleared\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 8.\tx360\tab MODBUS Register Map\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Holding Registers:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 40001 WIRE_FEED_RATE (rev/min) 40002 DANCER_SETPOINT (cm \u215?1000) 40003 MIN_DANCER_POS (cm \u215?1000) 40004 MAX_DANCER_POS (cm \u215?1000) 40005 PID_KP 40006 PID_KI 40007 PID_KD 40008 FAULT_CLEAR 40009 SPOOL_RESET (optional)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Coils:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 00001 WIRE_FEED\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Input Registers:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 30001 DANCER_POSITION (cm \u215?1000) 30002 WATER_RESISTIVITY (raw ADC) 30003 FAULT_CODE\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Discrete Inputs:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 10001 WIRE_FAULT 10002 AUTO_MODE\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 9.\tx360\tab Verification Requirements\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Validate feed scaling with mechanical reduction\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Verify stable dancer control across 60\u8211-100 mm diameter range\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Confirm correct behavior after spool reset\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Confirm TDS ADC reads within expected 0\u8211-2.3 V range\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Confirm MODBUS robustness under load\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 ============================================================\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 End of Document\par}
+}
